@@ -3,25 +3,20 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
-def import_image(filename):
-    # Import and convert to grayscale
-    img = Image.open(filename).convert('L')
-    return img
 
+# class Pixel:
+#     # Class for the Pixel object, which gives the greyscale intensity at each
+#     # point in the image
+#     def __init__(self, r, z=0.):
+#         self.r = r
+#         self.x = self.r[0]
+#         self.y = self.r[1]
+#         self.z = z
+#         self.N_connections = 0
 
-class Pixel:
-    # Class for the Pixel object, which gives the greyscale intensity at each
-    # point in the image
-    def __init__(self, r, z=0.):
-        self.r = r
-        self.x = self.r[0]
-        self.y = self.r[1]
-        self.z = z
-        self.N_connections = 0
-
-    def update_z(self):
-        # Calculate pixel darkness, as a function of N_connections
-        self.z = 1 / (0.3*self.N_connections + 1)
+#     def update_z(self):
+#         # Calculate pixel darkness, as a function of N_connections
+#         self.z = 1 / (0.3*self.N_connections + 1)
 
 
 class Image:
