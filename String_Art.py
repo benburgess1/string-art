@@ -3,12 +3,6 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from Process_Image import Image
 
-'''
-Need to rewrite this to avoid pixel dependency explicitly
-And/or put it back in if it would just be cleaner,  but think the strategy 
-of just using square numpy arrays will be preferable
-'''
-
 class Pin:
     # Class for the Pin object, between which connections can be created to
     # form the representation of the image
