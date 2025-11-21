@@ -32,6 +32,10 @@ class Image:
         self.rad = (L_pixels - 1) / 2
         self.x_offset = x_offset
         self.y_offset = y_offset
+        if np.abs(self.x_offset) > (self.downsize_pixels - self.L_pixels)/2:
+            print('Warning: x_offset too large; truncation errors may occur')
+        if np.abs(self.y_offset) > (self.downsize_pixels - self.L_pixels)/2:
+            print('Warning: y_offset too large; truncation errors may occur')
         self.raw_img = PIL_Image.open(filename).convert('L')
         self.raw_bitmap = np.array(self.raw_img)
         self.img = self.proportional_downsize()
@@ -73,5 +77,5 @@ class Image:
 
 
 if __name__ == '__main__': 
-    image = Image('Borat.png', downsize_pixels=111, L_pixels=101, y_offset=-2, x_offset=7)
+    image = Image('Borat.png', downsize_pixels=111, L_pixels=101, y_offset=-2, x_offset=5)
     image.preview()
