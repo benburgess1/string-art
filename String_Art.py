@@ -1,7 +1,13 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-from Process_Image import Pixel, Image
+from Process_Image import Image
+
+'''
+Need to rewrite this to avoid pixel dependency explicitly
+And/or put it back in if it would just be cleaner,  but think the strategy 
+of just using square numpy arrays will be preferable
+'''
 
 class Pin:
     # Class for the Pin object, between which connections can be created to
@@ -37,20 +43,16 @@ class Board:
             self.pins.append(Pin(theta))
         self.connections = []
         self.connection_paths = self.calc_connection_paths()
-        self.pixels = []
-        for pixel in image.pixels:
-            self.pixels.append(Pixel(pixel.r))
-        self.z = np.zeros(len(self.pixels))
         self.image = image
+        self.pixel_x = np.copy(self.image.x)
+        self.pixel_y = np.copy(self.image.y)
+        self.z = np.ones_like(self.pixel_x)
         self.cost = self.calc_cost()
 
     def calc_cost(self):
         # Calculate the current total cost function, as the square error between the current
         # pixel z_i values, and the target image z_i values
-        cost = 0.
-        for i in range(len(self.pixels)):
-            cost += (self.pixels[i].z - self.image.pixels[i].z)**2
-        return cost
+        return np.sum(self.z - self.image.bitmap)**2
 
     def calc_connection_paths(self):
         # Create dictionary of (ij):[k1, k2, ...] listing the pixels y_k intersected
@@ -86,8 +88,8 @@ class Board:
                 ax.plot(*pin.r, color=color, marker='o', ms=ms, lw=lw)
 
         if mark_pixels:
-            for pixel in self.pixels:
-                ax.plot(*pixel.r, color='r', ms=2, marker='x')
+            ax.plot(self.pixel_x.flatten(), self.pixel_y.flatten(), 
+                    color='r', ms=2, marker='x', ls='')
                 
         ax.set_aspect('equal')
         ax.set_xticks([])
@@ -102,8 +104,8 @@ class Board:
 
     
 if __name__ == '__main__':
-    img_placeholder = Image(img=np.zeros((100, 100)))
-    board = Board(N_pins=100, image=img_placeholder)
+    image = Image('Borat.png', downsize_pixels=111, L_pixels=101, y_offset=-2, x_offset=5)
+    board = Board(N_pins=100, image=image)
     print(len(board.pins))
     pin1 = board.pins[0]
     print(pin1.r)
