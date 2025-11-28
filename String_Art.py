@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from Process_Image import Image
+import pickle
 
 class Pin:
     # Class for the Pin object, between which connections can be created to
@@ -31,6 +32,7 @@ class Board:
     # until an acceptable accuracy to a given image is reached 
     def __init__(self, N_pins, image, connection_paths=None, progress=False):
         self.N_pins = N_pins
+        self.progress = progress
         self.pins = []
         thetas = np.linspace(0, 2*np.pi, N_pins+1)[:-1]
         for theta in thetas:
@@ -49,7 +51,6 @@ class Board:
         else:
             self.connection_paths = self.calc_all_connection_paths()
         self.cost = self.calc_cost()
-        self.progress = progress
 
     def calc_cost(self):
         # Calculate the current total cost function, as the square error between the current
@@ -67,7 +68,7 @@ class Board:
         for i in range(self.N_pins):
             for j in range(i+1, self.N_pins):
                 if self.progress:
-                    print(f'Evaluating pair {count} out of {0.5*self.N_pins*(self.N_pins-1)}', end='\r')
+                    print(f'Evaluating pair {count} out of {int(0.5*self.N_pins*(self.N_pins-1))}', end='\r')
                 path_pixels = self.calc_connection_path(i, j)
                 connection_paths[i][j] = path_pixels
                 connection_paths[j][i] = path_pixels
@@ -140,7 +141,6 @@ class Board:
 
         if mark_pixels:
             mask = self.image.inside_mask
-            print(self.pixel_x[mask].size)
             ax.plot(self.pixel_x[mask].flatten(), self.pixel_y[mask].flatten(), 
                     color='r', ms=2, marker='x', ls='')
             
@@ -163,8 +163,10 @@ class Board:
 
     
 if __name__ == '__main__':
+    with open('Connection_Paths_Nx101_Npin100.pkl', 'rb') as f:
+        connection_paths = pickle.load(f)
     image = Image('Borat.png', downsize_pixels=111, L_pixels=101, y_offset=-2, x_offset=5)
-    board = Board(N_pins=100, image=image, progress=True)
+    board = Board(N_pins=100, image=image, progress=True, connection_paths=connection_paths)
     # print(len(board.pins))
     # pin1 = board.pins[0]
     # print(pin1.r)
