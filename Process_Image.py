@@ -66,7 +66,7 @@ class Image:
         return xx, yy
     
     def calc_inside_mask(self):
-        return self.x**2 + self.y**2 < 1
+        return self.x**2 + self.y**2 <= 1
 
     def preview(self):
         fig, ax = plt.subplots()
