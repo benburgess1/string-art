@@ -23,15 +23,17 @@ class Pin:
     def deconnect(self, other):
         # Remove connection between self and other
         if other in self.connections:
-            self.connections.pop(other)
-            other.connections.pop(self)
+            self.connections.remove(other)
+            other.connections.remove(self)
 
 
 class Board:
     # Board class: a set of pins and pixels, and methods for updating connections
     # until an acceptable accuracy to a given image is reached 
-    def __init__(self, N_pins, image, connection_paths=None, progress=False):
+    def __init__(self, N_pins, image, connection_paths=None, progress=False, sigma=5, Nbar=4):
         self.N_pins = N_pins
+        self.sigma = sigma
+        self.Nbar = Nbar
         self.progress = progress
         self.pins = []
         thetas = np.linspace(0, 2*np.pi, N_pins+1)[:-1]
@@ -39,23 +41,66 @@ class Board:
             self.pins.append(Pin(theta))
         self.connections = []
         self.image = image
+        self.pixel_intersections = np.zeros_like(self.image.x)
         self.pixel_x = np.copy(self.image.x)
         self.pixel_y = np.copy(self.image.y)
         self.dx = np.copy(self.image.dx)
         self.dy = np.copy(self.image.dy)
         self.Nx = self.pixel_x.shape[0]
         self.Ny = self.pixel_y.shape[1]
-        self.z = np.ones_like(self.pixel_x)
+        self.z = 255 * np.ones_like(self.pixel_x)
         if connection_paths is not None:
             self.connection_paths = connection_paths
         else:
             self.connection_paths = self.calc_all_connection_paths()
         self.cost = self.calc_cost()
+        self.N_strings = np.zeros(self.image.x.shape)
+        self.stuck_counter = 0
+        self.critical_stuck = 20
 
-    def calc_cost(self):
+    def add_connection(self, i, j):
+        # Add a connection between pin i and pin j, and update the relevant pixels information
+        # for number of intersecting strings (N_strings) and intensity (z)
+        if self.pins[i] not in self.pins[j].connections:
+            self.pins[i].connect(self.pins[j])
+            pixel_idxs = self.connection_paths[i][j]
+            rows, cols = zip(*pixel_idxs)
+            self.N_strings[rows, cols] += 1
+            self.calc_z(pixel_idxs)
+
+    def remove_connection(self, i, j):
+        # Add a connection between pin i and pin j, and update the relevant pixels information
+        # for number of intersecting strings (N_strings) and intensity (z)
+        if self.pins[i] in self.pins[j].connections:
+            self.pins[i].deconnect(self.pins[j])
+            pixel_idxs = self.connection_paths[i][j]
+            rows, cols = zip(*pixel_idxs)
+            self.N_strings[rows, cols] -= 1
+            self.calc_z(pixel_idxs)
+
+    def calc_z(self, idxs=None):
+        # Calculate intensity z of a pixel from the number N_strings of strings intersecting it
+        if idxs is not None:
+            rows, cols = zip(*idxs)
+            self.z[rows, cols] = 255 * (1 - np.tanh((self.N_strings[rows, cols] - self.Nbar)/self.sigma))
+            # self.z[rows, cols] = 255 /(self.N_strings[rows, cols]/self.sigma + 1)
+            # self.z[rows, cols] = 255 * np.exp(-self.N_strings[rows, cols]/self.sigma)
+            # self.z[rows, cols] = 255 * np.exp(-0.5 * self.N_strings[rows, cols]**2 / self.sigma**2)
+        else:
+            self.z = 255 * (1 - np.tanh((self.N_strings - self.Nbar)/self.sigma))
+            # self.z = 255 /(self.N_strings/self.sigma + 1)
+            # self.z = 255 * np.exp(-self.N_strings/self.sigma)
+            # self.z = 255 * np.exp(-0.5 * self.N_strings**2 / self.sigma**2)
+
+    def calc_cost(self, idxs=None):
         # Calculate the current total cost function, as the square error between the current
         # pixel z_i values, and the target image z_i values
-        return np.sum(self.z - self.image.bitmap)**2
+        if idxs is not None:
+            rows, cols = zip(*idxs)
+            return np.sum((self.z[rows, cols] - self.image.bitmap[rows, cols])**2)
+        else:
+            self.cost = np.sum((self.z - self.image.bitmap)**2)
+            return self.cost
 
     def calc_all_connection_paths(self):
         # Create nested list connection_paths
@@ -76,7 +121,6 @@ class Board:
         print('')
         return connection_paths
 
-
     def find_closest_pixel(self, r):
         # Find the pixel that a point r is contained within, assuming an even grid of pixels
         # If the closest pixel has its centre outside the circular window, return None
@@ -92,7 +136,6 @@ class Board:
             return (idxs[0][0], idxs[1][0])
         else:
             print('Warning: multiple acceptance pixels. Check pixel grid.')
-
 
     def calc_connection_path(self, i, j):
         # Calculate the array of tuples of indices (l,k) of pixels intersected by
@@ -110,16 +153,52 @@ class Board:
                     path_pixels.append(idx)
         return path_pixels
     
-
     def random_step(self):
         # Pick a random connection; flip it; test whether cost is improved or not; 
         # if improved, keep the change
-        pass
+        i = np.random.randint(0, self.N_pins)
+        j = np.random.randint(0, self.N_pins)
+        while j == i:
+            j = np.random.randint(0, self.N_pins)
+        # print(f'Evaluating pair {i}, {j}')
+        pixel_idxs = self.connection_paths[i][j]
+        if len(pixel_idxs) == 0:
+            return
+        current_cost = self.calc_cost(pixel_idxs)
+        # print(f'Current cost: {current_cost}')
+        if self.pins[i] not in self.pins[j].connections:
+            # print('Not currently connected')
+            self.add_connection(i, j)
+            # print(self.pins[i] in self.pins[j].connections)
+            pixel_idxs = self.connection_paths[i][j]
+            (l,k) = pixel_idxs[0]
+            # print(self.N_strings[l,k])
+            # print(self.z[l,k])
+            # print(self.image.bitmap[l,k])
+            new_cost = self.calc_cost(pixel_idxs)
+            # print(f'New cost: {current_cost}')
+            if new_cost > current_cost: 
+                # Revert change
+                self.remove_connection(i, j)
+            # else:
+            #     print('Added connection')
+        elif self.pins[i] in self.pins[j].connections:
+            # print('Already connected')
+            self.remove_connection(i, j)
+            new_cost = self.calc_cost(pixel_idxs)
+            if new_cost > current_cost:
+                # Revert change; look for new pin to connect to
+                self.add_connection(i, j)
+            # else:
+            #     print('Removed connection')
 
-    def optimise(self, N_steps):
+
+    def optimise(self, N_steps=None):
         # Optimise connections by repeatedly making random steps
+        if N_steps is None:
+            N_steps = self.N_pins**2
         for i in range(N_steps):
-            print(f'Evaluating step {i+1} out of {N_steps}...' + 10*' ', end='\r')
+            print(f'Evaluating step {i+1} out of {N_steps}...' + 10*' ')#, end='\r')
             self.random_step()
 
     def show_state(self, ax=None, plot=True, color='k', ms=3, lw=1,
@@ -149,16 +228,22 @@ class Board:
                 ax.plot(self.pixel_x[*idx], self.pixel_y[*idx], 
                         color='gold', ms=2, marker='x', ls='')
                 
-                
         ax.set_aspect('equal')
         ax.set_xticks([])
         ax.set_yticks([])
         ax.set_xlim(-1.1, 1.1)
         ax.set_ylim(-1.1, 1.1)
 
-        
         if plot == True:
             plt.show()
+
+    def show_z(self):
+        fig, ax = plt.subplots()
+        ax.imshow(self.z, cmap='gray')
+        rad = (self.Nx - 1)/2
+        circ = patches.Circle(xy=(rad, rad), radius=rad, ec='r', fc=(0,0,0,0), lw=3)
+        ax.add_patch(circ)
+        plt.show()
 
 
     
@@ -166,12 +251,17 @@ if __name__ == '__main__':
     with open('Connection_Paths_Nx101_Npin100.pkl', 'rb') as f:
         connection_paths = pickle.load(f)
     image = Image('Borat.png', downsize_pixels=111, L_pixels=101, y_offset=-2, x_offset=5)
-    board = Board(N_pins=100, image=image, progress=True, connection_paths=connection_paths)
+    board = Board(N_pins=100, image=image, progress=True, connection_paths=connection_paths,
+                  sigma=10, Nbar=4)
     # print(len(board.pins))
     # pin1 = board.pins[0]
     # print(pin1.r)
     # pin1.connect(board.pins[60])
-    pin25 = board.pins[24]
-    pin56 = board.pins[55]
-    pin25.connect(pin56)
-    board.show_state(mark_pixels=True, highlight_pixels=board.connection_paths[24][55])
+    # pin25 = board.pins[24]
+    # pin56 = board.pins[55]
+    # pin25.connect(pin56)
+    # board.show_state(mark_pixels=True, highlight_pixels=board.connection_paths[24][55])
+    board.optimise(N_steps=10000)
+    board.show_state(mark_pixels=False, lw=0.25)
+    board.show_z()
+    # print(board.z)
