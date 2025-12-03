@@ -248,11 +248,14 @@ class Board:
 
     
 if __name__ == '__main__':
-    with open('Connection_Paths_Nx101_Npin100.pkl', 'rb') as f:
-        connection_paths = pickle.load(f)
+    # with open('Connection_Paths_Nx101_Npin100.pkl', 'rb') as f:
+    #     connection_paths = pickle.load(f)
     image = Image('Borat.png', downsize_pixels=111, L_pixels=101, y_offset=-2, x_offset=5)
-    board = Board(N_pins=100, image=image, progress=True, connection_paths=connection_paths,
+    board = Board(N_pins=1000, image=image, progress=True, connection_paths=None,
                   sigma=10, Nbar=4)
+    connection_paths = board.connection_paths
+    with open('Connection_Paths_Nx101_Npin1000.pkl', 'wb') as f:
+        pickle.dump(connection_paths, f)
     # print(len(board.pins))
     # pin1 = board.pins[0]
     # print(pin1.r)
@@ -261,7 +264,7 @@ if __name__ == '__main__':
     # pin56 = board.pins[55]
     # pin25.connect(pin56)
     # board.show_state(mark_pixels=True, highlight_pixels=board.connection_paths[24][55])
-    board.optimise(N_steps=10000)
-    board.show_state(mark_pixels=False, lw=0.25)
-    board.show_z()
+    # board.optimise(N_steps=10000)
+    # board.show_state(mark_pixels=False, lw=0.25)
+    # board.show_z()
     # print(board.z)
