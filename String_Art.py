@@ -82,15 +82,15 @@ class Board:
         # Calculate intensity z of a pixel from the number N_strings of strings intersecting it
         if idxs is not None:
             rows, cols = zip(*idxs)
-            self.z[rows, cols] = 255 * (1 - np.tanh((self.N_strings[rows, cols] - self.Nbar)/self.sigma))
+            # self.z[rows, cols] = 255 * (1 - np.tanh((self.N_strings[rows, cols] - self.Nbar)/self.sigma)) / (1 - np.tanh(-self.Nbar/self.sigma))
             # self.z[rows, cols] = 255 /(self.N_strings[rows, cols]/self.sigma + 1)
             # self.z[rows, cols] = 255 * np.exp(-self.N_strings[rows, cols]/self.sigma)
-            # self.z[rows, cols] = 255 * np.exp(-0.5 * self.N_strings[rows, cols]**2 / self.sigma**2)
+            self.z[rows, cols] = 255 * np.exp(-self.N_strings[rows, cols]**2 / self.sigma**2)
         else:
-            self.z = 255 * (1 - np.tanh((self.N_strings - self.Nbar)/self.sigma))
+            # self.z = 255 * (1 - np.tanh((self.N_strings - self.Nbar)/self.sigma)) / (1 - np.tanh(-self.Nbar/self.sigma))
             # self.z = 255 /(self.N_strings/self.sigma + 1)
             # self.z = 255 * np.exp(-self.N_strings/self.sigma)
-            # self.z = 255 * np.exp(-0.5 * self.N_strings**2 / self.sigma**2)
+            self.z = 255 * np.exp(-self.N_strings**2 / self.sigma**2)
 
     def calc_cost(self, idxs=None):
         # Calculate the current total cost function, as the square error between the current
@@ -193,13 +193,18 @@ class Board:
             #     print('Removed connection')
 
 
-    def optimise(self, N_steps=None):
+    def optimise(self, N_steps=None, record_cost=False):
         # Optimise connections by repeatedly making random steps
         if N_steps is None:
             N_steps = self.N_pins**2
+        cost_list = np.zeros(N_steps)
         for i in range(N_steps):
-            print(f'Evaluating step {i+1} out of {N_steps}...' + 10*' ')#, end='\r')
+            print(f'Evaluating step {i+1} out of {N_steps}...' + 10*' ', end='\r')
             self.random_step()
+            if record_cost:
+                cost_list[i] = self.calc_cost()
+        print('\nDone')
+        return cost_list
 
     def show_state(self, ax=None, plot=True, color='k', ms=3, lw=1,
                    mark_pixels=False, highlight_pixels=None):
@@ -246,25 +251,47 @@ class Board:
         plt.show()
 
 
+def plot_cost_record(cost_record, logx=False, logy=False):
+    fig, ax = plt.subplots()
+    x = np.arange(1, cost_record.size+1)
+    ax.plot(x, cost_record, color='b', ls='-', marker=None)
+    ax.set_xlabel('Step')
+    ax.set_ylabel('Cost')
+    ax.set_title('Cost during optimisation procedure')
+    if logx:
+        ax.set_xscale('log')
+    if logy:
+        ax.set_yscale('log')
+    plt.show()
+
+
+def generate_connection_paths(filename=None, L_pixels=101, N_pins=100):
+    # Construct a board and save it's calculated connection_paths array
+    image = Image('Einstein.png', downsize_pixels=2*L_pixels, L_pixels=L_pixels, y_offset=0, x_offset=0)     # 'Dummy' image
+    board = Board(N_pins=N_pins, image=image, progress=True, connection_paths=None,
+                  sigma=12.5)
+    connection_paths = board.connection_paths
+    if filename is None:
+        filename = 'Connection_Paths_Nx' + str(L_pixels) + '_Npin' + str(N_pins) + '.pkl'
+    with open(filename, 'wb') as f:
+        pickle.dump(connection_paths, f)
+
     
 if __name__ == '__main__':
-    # with open('Connection_Paths_Nx101_Npin100.pkl', 'rb') as f:
-    #     connection_paths = pickle.load(f)
-    image = Image('Borat.png', downsize_pixels=111, L_pixels=101, y_offset=-2, x_offset=5)
-    board = Board(N_pins=1000, image=image, progress=True, connection_paths=None,
-                  sigma=10, Nbar=4)
-    connection_paths = board.connection_paths
-    with open('Connection_Paths_Nx101_Npin1000.pkl', 'wb') as f:
-        pickle.dump(connection_paths, f)
-    # print(len(board.pins))
-    # pin1 = board.pins[0]
-    # print(pin1.r)
-    # pin1.connect(board.pins[60])
-    # pin25 = board.pins[24]
-    # pin56 = board.pins[55]
-    # pin25.connect(pin56)
-    # board.show_state(mark_pixels=True, highlight_pixels=board.connection_paths[24][55])
-    # board.optimise(N_steps=10000)
-    # board.show_state(mark_pixels=False, lw=0.25)
-    # board.show_z()
-    # print(board.z)
+    # generate_connection_paths(L_pixels=201, N_pins=200)
+    with open('Connection_Paths_Nx201_Npin200.pkl', 'rb') as f:
+        print('Loading connection_paths...')
+        connection_paths = pickle.load(f)
+        print('Done')
+    # image = Image('Borat.png', downsize_pixels=111, L_pixels=101, y_offset=-2, x_offset=5)
+    # image = Image('Einstein.png', downsize_pixels=111, L_pixels=101, y_offset=15, x_offset=5)
+    image = Image('Einstein.png', downsize_pixels=221, L_pixels=201, y_offset=30, x_offset=5)
+    # board = Board(N_pins=100, image=image, progress=True, connection_paths=connection_paths,
+    #               sigma=12.5, Nbar=7)
+    board = Board(N_pins=200, image=image, progress=True, connection_paths=connection_paths,
+                  sigma=6.25, Nbar=7)
+
+    cost_record = board.optimise(N_steps=100000, record_cost=True)
+    board.show_state(mark_pixels=False, lw=0.1)
+    board.show_z()
+    plot_cost_record(cost_record, logx=True)
