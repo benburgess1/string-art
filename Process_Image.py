@@ -78,5 +78,7 @@ class Image:
 
 if __name__ == '__main__': 
     # image = Image('Borat.png', downsize_pixels=111, L_pixels=101, y_offset=-2, x_offset=5)
-    image = Image('Einstein.png', downsize_pixels=221, L_pixels=201, y_offset=30, x_offset=5)
+    # image = Image('Einstein.png', downsize_pixels=161, L_pixels=151, y_offset=25, x_offset=0)
+    # image = Image('selfie.jpg', downsize_pixels=221, L_pixels=151, y_offset=-10, x_offset=0)
+    image = Image('selfie2.jpg', downsize_pixels=251, L_pixels=151, y_offset=-40, x_offset=5)
     image.preview()

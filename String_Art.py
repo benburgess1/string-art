@@ -30,9 +30,13 @@ class Pin:
 class Board:
     # Board class: a set of pins and pixels, and methods for updating connections
     # until an acceptable accuracy to a given image is reached 
-    def __init__(self, N_pins, image, connection_paths=None, progress=False, sigma=5, Nbar=4):
+    def __init__(self, N_pins, image, connection_paths=None, progress=False, sigma=5, Nbar=4,
+                 s1=3, s2=15, c=0.5):
         self.N_pins = N_pins
         self.sigma = sigma
+        self.s1 = s1
+        self.s2 = s2
+        self.c = c
         self.Nbar = Nbar
         self.progress = progress
         self.pins = []
@@ -85,12 +89,16 @@ class Board:
             # self.z[rows, cols] = 255 * (1 - np.tanh((self.N_strings[rows, cols] - self.Nbar)/self.sigma)) / (1 - np.tanh(-self.Nbar/self.sigma))
             # self.z[rows, cols] = 255 /(self.N_strings[rows, cols]/self.sigma + 1)
             # self.z[rows, cols] = 255 * np.exp(-self.N_strings[rows, cols]/self.sigma)
-            self.z[rows, cols] = 255 * np.exp(-self.N_strings[rows, cols]**2 / self.sigma**2)
+            # self.z[rows, cols] = 255 * np.exp(-self.N_strings[rows, cols]**2 / self.sigma**2)
+            self.z[rows, cols] = 255 * (self.c * np.exp(-self.N_strings[rows, cols]**2 / self.s1**2) + 
+                                        (1 - self.c) * np.exp(-self.N_strings[rows, cols]**2 / self.s2**2))
         else:
             # self.z = 255 * (1 - np.tanh((self.N_strings - self.Nbar)/self.sigma)) / (1 - np.tanh(-self.Nbar/self.sigma))
             # self.z = 255 /(self.N_strings/self.sigma + 1)
             # self.z = 255 * np.exp(-self.N_strings/self.sigma)
-            self.z = 255 * np.exp(-self.N_strings**2 / self.sigma**2)
+            # self.z = 255 * np.exp(-self.N_strings**2 / self.sigma**2)
+            self.z = 255 * (self.c * np.exp(-self.N_strings[rows, cols]**2 / self.s1**2) + 
+                            (1 - self.c) * np.exp(-self.N_strings[rows, cols]**2 / self.s2**2))
 
     def calc_cost(self, idxs=None):
         # Calculate the current total cost function, as the square error between the current
@@ -207,7 +215,7 @@ class Board:
         return cost_list
 
     def show_state(self, ax=None, plot=True, color='k', ms=3, lw=1,
-                   mark_pixels=False, highlight_pixels=None):
+                   mark_pixels=False, highlight_pixels=None, params_in_title=True):
         # Plot all pins and connections; optionally plot the positions of pixels (for testing)
         if ax is None:
             fig, ax = plt.subplots() 
@@ -239,16 +247,52 @@ class Board:
         ax.set_xlim(-1.1, 1.1)
         ax.set_ylim(-1.1, 1.1)
 
+        if params_in_title:
+            title_str = ''
+            title_str += r'$N_{pin} = $' + str(int(self.N_pins))
+            title_str += ', ' + r'$N_{pix} = $' + str(int(self.Nx))
+            # title_str += ', ' + r'$\sigma = $' + str(np.round(self.sigma,3))
+            title_str += ', ' + r'$s_1 = $' + str(np.round(self.s1,3))
+            title_str += ', ' + r'$s_2 = $' + str(np.round(self.s2,3))
+            title_str += ', ' + r'$c = $' + str(np.round(self.c,3))
+            ax.set_title(title_str)
+
         if plot == True:
             plt.show()
 
-    def show_z(self):
+    def show_z(self, params_in_title=True):
         fig, ax = plt.subplots()
         ax.imshow(self.z, cmap='gray')
         rad = (self.Nx - 1)/2
         circ = patches.Circle(xy=(rad, rad), radius=rad, ec='r', fc=(0,0,0,0), lw=3)
         ax.add_patch(circ)
+        if params_in_title:
+            title_str = ''
+            title_str += r'$N_{pin} = $' + str(int(self.N_pins))
+            title_str += ', ' + r'$N_{pix} = $' + str(int(self.Nx))
+            # title_str += ', ' + r'$\sigma = $' + str(np.round(self.sigma,3))
+            title_str += ', ' + r'$s_1 = $' + str(np.round(self.s1,3))
+            title_str += ', ' + r'$s_2 = $' + str(np.round(self.s2,3))
+            title_str += ', ' + r'$c = $' + str(np.round(self.c,3))
+            ax.set_title(title_str)
         plt.show()
+
+    def calc_string_lenth(self):
+        length = 0
+        for pin in self.pins:
+            for other in pin.connections:
+                dr = other.r - pin.r
+                length += np.linalg.norm(dr)
+        length /= 2
+        return length
+    
+    def calc_num_connections(self):
+        total = 0
+        for pin in self.pins:
+            total += len(pin.connections)
+        total /= 2
+        return total
+
 
 
 def plot_cost_record(cost_record, logx=False, logy=False):
@@ -272,26 +316,33 @@ def generate_connection_paths(filename=None, L_pixels=101, N_pins=100):
                   sigma=12.5)
     connection_paths = board.connection_paths
     if filename is None:
-        filename = 'Connection_Paths_Nx' + str(L_pixels) + '_Npin' + str(N_pins) + '.pkl'
+        filename = 'Connection_Paths_Npix' + str(L_pixels) + '_Npin' + str(N_pins) + '.pkl'
     with open(filename, 'wb') as f:
         pickle.dump(connection_paths, f)
 
     
 if __name__ == '__main__':
-    # generate_connection_paths(L_pixels=201, N_pins=200)
-    with open('Connection_Paths_Nx201_Npin200.pkl', 'rb') as f:
-        print('Loading connection_paths...')
+    # generate_connection_paths(L_pixels=151, N_pins=250)
+    # generate_connection_paths(L_pixels=151, N_pins=300)
+    with open('Connection_Paths_Npix151_Npin250.pkl', 'rb') as f:
+        # print('Loading connection_paths...')
         connection_paths = pickle.load(f)
-        print('Done')
+        # print('Done')
     # image = Image('Borat.png', downsize_pixels=111, L_pixels=101, y_offset=-2, x_offset=5)
     # image = Image('Einstein.png', downsize_pixels=111, L_pixels=101, y_offset=15, x_offset=5)
-    image = Image('Einstein.png', downsize_pixels=221, L_pixels=201, y_offset=30, x_offset=5)
-    # board = Board(N_pins=100, image=image, progress=True, connection_paths=connection_paths,
-    #               sigma=12.5, Nbar=7)
-    board = Board(N_pins=200, image=image, progress=True, connection_paths=connection_paths,
-                  sigma=6.25, Nbar=7)
+    # image = Image('Einstein.png', downsize_pixels=161, L_pixels=151, y_offset=25, x_offset=0)
+    # image = Image('selfie.jpg', downsize_pixels=221, L_pixels=151, y_offset=-10, x_offset=0)
+    image = Image('selfie2.jpg', downsize_pixels=251, L_pixels=151, y_offset=-40, x_offset=5)
+    # # board = Board(N_pins=100, image=image, progress=True, connection_paths=connection_paths,
+    # #               sigma=12.5, Nbar=7)
+    board = Board(N_pins=250, image=image, progress=True, connection_paths=connection_paths,
+                  sigma=12.5, s1=8, s2=30, c=0.35)
 
     cost_record = board.optimise(N_steps=100000, record_cost=True)
-    board.show_state(mark_pixels=False, lw=0.1)
-    board.show_z()
+    length = board.calc_string_lenth()
+    num_connections = board.calc_num_connections()
+    print(f'Length = {np.round(length * 0.25, 3)}')
+    print(f'Number of connections = {np.round(num_connections, 3)}')
+    board.show_state(mark_pixels=False, lw=0.025, params_in_title=True)
+    board.show_z(params_in_title=True)
     plot_cost_record(cost_record, logx=True)
