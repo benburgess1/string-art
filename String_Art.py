@@ -217,17 +217,34 @@ class Board:
             #     print('Removed connection')
 
 
-    def optimise(self, N_steps=None, record_cost=False):
+    def optimise(self, N_steps=None, record_cost=True, epsilon=1e-2, max_steps=1e6, w=1e4, dp=5):
         # Optimise connections by repeatedly making random steps
         if N_steps is None:
-            N_steps = self.N_pins**2
-        cost_list = np.zeros(N_steps)
-        for i in range(N_steps):
-            print(f'Evaluating step {i+1} out of {N_steps}...' + 10*' ', end='\r')
-            self.random_step()
-            if record_cost:
-                cost_list[i] = self.calc_cost()
-        print('\nDone')
+            self.counter = 0
+            converged = False
+            cost_list = []
+            while not converged and self.counter < max_steps:
+                print(f'Evaluating step {self.counter+1} (max steps {int(max_steps)})...' + 10*' ', end='\r')
+                self.random_step()
+                if record_cost:
+                    cost_list.append(self.calc_cost())
+                self.counter += 1
+                if self.counter > w:
+                    delta_cost = cost_list[-int(w)] - cost_list[-1]
+                    converged = delta_cost/cost_list[-1] < epsilon
+            cost_list = np.array(cost_list)
+            if converged:
+                print(f'\nConverged to error {np.round(delta_cost/cost_list[-1],dp)} in {self.counter} steps')
+            else:
+                print(f'\nMax steps reached: achieved error {np.round(delta_cost/cost_list[-1],dp)} in {self.counter} steps')   
+        else:
+            cost_list = np.zeros(N_steps)
+            for i in range(N_steps):
+                print(f'Evaluating step {i+1} out of {N_steps}...' + 10*' ', end='\r')
+                self.random_step()
+                if record_cost:
+                    cost_list[i] = self.calc_cost()
+            print('\nDone')
         return cost_list
 
     def show_state(self, ax=None, plot=True, color='k', ms=3, lw=1,
@@ -412,13 +429,13 @@ if __name__ == '__main__':
     board = Board(N_pins=250, image=image, progress=True, connection_paths=connection_paths,
                   sigma=12.5, s1=8, s2=30, c=0.35)
 
-    cost_record = board.optimise(N_steps=10000, record_cost=True)
+    cost_record = board.optimise(N_steps=None, record_cost=True, epsilon=1e-3, w=1e4)
     length = board.calc_string_lenth()
     print(f'Length = {np.round(length * 0.25, 3)}')
     print(f'Number of connections = {np.round(len(board.connections), 3)}')
     board.calc_instructions()
     print(f'Number of instructions: {len(board.instruction_list)}')
     print(f'Instruction list:\n{board.instruction_list[:10]}\n...')
-    board.show_state(mark_pixels=False, lw=0.025, params_in_title=True)
-    board.show_z(params_in_title=True)
+    # board.show_state(mark_pixels=False, lw=0.025, params_in_title=True)
+    # board.show_z(params_in_title=True)
     plot_cost_record(cost_record, logx=True)
