@@ -298,11 +298,6 @@ class Board:
         for (i,j) in self.connections:
             dr = self.pins[i].r - self.pins[j].r
             length += np.linalg.norm(dr)
-        # for pin in self.pins:
-        #     for other in pin.connections:
-        #         dr = other.r - pin.r
-        #         length += np.linalg.norm(dr)
-        # length /= 2
         return length
     
     def next_instruction(self, i):
@@ -320,47 +315,30 @@ class Board:
         return None
     
     def follow_chain(self, i):
-        # print(f'i = {i}')
         if self.counter + 1 <= len(self.connections):
             print(f'Constructing instruction list: {self.counter+1}/{len(self.connections)}...' + 10*' ', end='\r')
         j = self.next_instruction(i)
         if j is not None:
-            # print(f'Found j = {j}')
             if i < j:
                 pair = [i, j]
             else:
                 pair = [j, i]
             self.instruction_list.append(pair)
-            # idx = np.where(np.all(arr == v, axis=1))[0]
             idx = np.where(np.all(self.remaining_connections == pair, axis=1))[0]
-            # print(self.remaining_connections==pair)
-            # print(f'Index to delete: {idx}')
             self.remaining_connections = np.delete(self.remaining_connections, idx, 0)
             self.counter += 1
-            # print(f'New remaining: {self.remaining_connections.shape}')
             try:
                 self.follow_chain(j)
             except RecursionError:
-                # print('Escaped')
                 return
         else:
-            # print('triggered')
             return
     
     def calc_instructions(self):
         self.counter = 0
         self.remaining_connections = np.array(self.connections)
-        # print(self.remaining_connections)
-        # v1 = self.remaining_connections[0,:]
-        # print(v1)
-        # idx = np.where(np.all(self.remaining_connections == v1, axis=1))
-        # print(idx)
-        self.instruction_list = []
         self.remaining_counts = np.array([(self.remaining_connections==i).sum() for i in range(self.N_pins)])
-        # print(self.remaining_counts)
-        # i = np.argmax(self.remaining_counts)
-        # print(i)
-        # self.follow_chain(i)
+        self.instruction_list = []
         while np.sum(self.remaining_counts) > 0:
             i = np.argmax(self.remaining_counts)
             self.follow_chain(i)
