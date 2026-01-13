@@ -7,12 +7,13 @@ import pickle
 class Pin:
     # Class for the Pin object, between which connections can be created to
     # form the representation of the image
-    def __init__(self, theta):
+    def __init__(self, theta, idx=None):
         self.theta = theta
         self.r = np.array([np.cos(self.theta), np.sin(self.theta)])
         self.x = self.r[0]
         self.y = self.r[1]
         self.connections = []
+        self.idx = idx
 
     def connect(self, other):
         # Add connection between self and other
@@ -41,8 +42,8 @@ class Board:
         self.progress = progress
         self.pins = []
         thetas = np.linspace(0, 2*np.pi, N_pins+1)[:-1]
-        for theta in thetas:
-            self.pins.append(Pin(theta))
+        for i, theta in enumerate(thetas):
+            self.pins.append(Pin(theta=theta, idx=i))
         self.connections = []
         self.image = image
         self.pixel_intersections = np.zeros_like(self.image.x)
@@ -61,12 +62,21 @@ class Board:
         self.N_strings = np.zeros(self.image.x.shape)
         self.stuck_counter = 0
         self.critical_stuck = 20
+        self.remaining_connections = np.array([])
+        self.connection_list = []
+        self.remaining_counts = np.array([])
+        self.instruction_list = []
+        self.counter = 0
 
     def add_connection(self, i, j):
         # Add a connection between pin i and pin j, and update the relevant pixels information
         # for number of intersecting strings (N_strings) and intensity (z)
         if self.pins[i] not in self.pins[j].connections:
             self.pins[i].connect(self.pins[j])
+            if i < j:
+                self.connections.append((i,j))
+            else:
+                self.connections.append((j,i))
             pixel_idxs = self.connection_paths[i][j]
             rows, cols = zip(*pixel_idxs)
             self.N_strings[rows, cols] += 1
@@ -77,6 +87,12 @@ class Board:
         # for number of intersecting strings (N_strings) and intensity (z)
         if self.pins[i] in self.pins[j].connections:
             self.pins[i].deconnect(self.pins[j])
+            if i < j:
+                self.connections.remove((i,j))
+            else:
+                self.connections.remove((j,i))
+            # else: 
+            #     print('Warning: did not find occurrence of (i,j) or (j,i) in self.connections')
             pixel_idxs = self.connection_paths[i][j]
             rows, cols = zip(*pixel_idxs)
             self.N_strings[rows, cols] -= 1
@@ -279,19 +295,99 @@ class Board:
 
     def calc_string_lenth(self):
         length = 0
-        for pin in self.pins:
-            for other in pin.connections:
-                dr = other.r - pin.r
-                length += np.linalg.norm(dr)
-        length /= 2
+        for (i,j) in self.connections:
+            dr = self.pins[i].r - self.pins[j].r
+            length += np.linalg.norm(dr)
+        # for pin in self.pins:
+        #     for other in pin.connections:
+        #         dr = other.r - pin.r
+        #         length += np.linalg.norm(dr)
+        # length /= 2
         return length
     
-    def calc_num_connections(self):
-        total = 0
-        for pin in self.pins:
-            total += len(pin.connections)
-        total /= 2
-        return total
+    def next_instruction(self, i):
+        pin = self.pins[i]
+        local_counts = np.array([self.remaining_counts[other.idx] for other in pin.connections])
+        idxs = np.argsort(local_counts)[::-1]
+        for k in idxs:
+            j = pin.connections[k].idx
+            if i < j:
+                pair = [i, j]
+            else:
+                pair = [j, i]
+            if len(np.where(np.all(self.remaining_connections == pair, axis=1))[0]) > 0:
+                return j
+        return None
+    
+    def follow_chain(self, i):
+        # print(f'i = {i}')
+        if self.counter + 1 <= len(self.connections):
+            print(f'Constructing instruction list: {self.counter+1}/{len(self.connections)}...' + 10*' ', end='\r')
+        j = self.next_instruction(i)
+        if j is not None:
+            # print(f'Found j = {j}')
+            if i < j:
+                pair = [i, j]
+            else:
+                pair = [j, i]
+            self.instruction_list.append(pair)
+            # idx = np.where(np.all(arr == v, axis=1))[0]
+            idx = np.where(np.all(self.remaining_connections == pair, axis=1))[0]
+            # print(self.remaining_connections==pair)
+            # print(f'Index to delete: {idx}')
+            self.remaining_connections = np.delete(self.remaining_connections, idx, 0)
+            self.counter += 1
+            # print(f'New remaining: {self.remaining_connections.shape}')
+            try:
+                self.follow_chain(j)
+            except RecursionError:
+                # print('Escaped')
+                return
+        else:
+            # print('triggered')
+            return
+    
+    def calc_instructions(self):
+        self.counter = 0
+        self.remaining_connections = np.array(self.connections)
+        # print(self.remaining_connections)
+        # v1 = self.remaining_connections[0,:]
+        # print(v1)
+        # idx = np.where(np.all(self.remaining_connections == v1, axis=1))
+        # print(idx)
+        self.instruction_list = []
+        self.remaining_counts = np.array([(self.remaining_connections==i).sum() for i in range(self.N_pins)])
+        # print(self.remaining_counts)
+        # i = np.argmax(self.remaining_counts)
+        # print(i)
+        # self.follow_chain(i)
+        while np.sum(self.remaining_counts) > 0:
+            i = np.argmax(self.remaining_counts)
+            self.follow_chain(i)
+            self.remaining_counts = np.array([(self.remaining_connections==i).sum() for i in range(self.N_pins)])
+        print('')
+        self.instruction_list = np.array(self.instruction_list, dtype=np.int64)
+        self.fix_instruction_list_order()
+
+    def fix_instruction_list_order(self, print_max_count=False):
+        # Base case
+        if self.instruction_list[0,0] in self.instruction_list[1,:]:
+            self.instruction_list[0,:] = self.instruction_list[0,:][::-1]
+        max_count = 0
+        count = 0
+        for i in range(1, self.instruction_list.shape[0]):
+            if self.instruction_list[i,1] == self.instruction_list[i-1,1]:
+                self.instruction_list[i,:] = self.instruction_list[i,:][::-1]
+                count += 1
+            elif self.instruction_list[i,0] == self.instruction_list[i-1,1]:
+                count += 1
+            else:
+                if count > max_count:
+                    max_count = count
+                count = 0
+        if print_max_count:
+            print(f'Max count = {max_count}')
+            
 
 
 
@@ -338,11 +434,13 @@ if __name__ == '__main__':
     board = Board(N_pins=250, image=image, progress=True, connection_paths=connection_paths,
                   sigma=12.5, s1=8, s2=30, c=0.35)
 
-    cost_record = board.optimise(N_steps=100000, record_cost=True)
+    cost_record = board.optimise(N_steps=10000, record_cost=True)
     length = board.calc_string_lenth()
-    num_connections = board.calc_num_connections()
     print(f'Length = {np.round(length * 0.25, 3)}')
-    print(f'Number of connections = {np.round(num_connections, 3)}')
+    print(f'Number of connections = {np.round(len(board.connections), 3)}')
+    board.calc_instructions()
+    print(f'Number of instructions: {len(board.instruction_list)}')
+    print(f'Instruction list:\n{board.instruction_list[:10]}\n...')
     board.show_state(mark_pixels=False, lw=0.025, params_in_title=True)
     board.show_z(params_in_title=True)
     plot_cost_record(cost_record, logx=True)
